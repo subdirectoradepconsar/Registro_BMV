@@ -19,14 +19,19 @@ banner.svg es un espacio provisional de 1600 × 400 px. Reemplazarlo por el bann
 
 ## Publicación
 
-La copia no tiene historial ni remoto Git y no está publicada. Se conserva el workflow de GitHub Pages para un futuro repositorio independiente.
+Repositorio: https://github.com/subdirectoradepconsar/Registro_BMV
+
+Página web: https://subdirectoradepconsar.github.io/Registro_BMV/
+
+Los cambios en main se publican mediante GitHub Pages.
 
 ## Conexión BMV preparada
 
 Hoja: https://docs.google.com/spreadsheets/d/1M0HCwlNzMsvAQ6xQY3p50TkWAD8sf5YY5Ben4ahnNrs/edit
 Proyecto Apps Script: https://script.google.com/home/projects/1AQTQOGxfK-jjFXRBsynJ0ZAHB5BOv_C86RZj16dorN68NJn39T23fJeO/edit
-El ID está configurado, el script implementado y WEBHOOK_URL conectado. Se comprobó que el servicio responde HTTP 200 y devuelve un error JSON al recibir datos inválidos, sin agregar filas. Falta verificar un registro real desde el formulario y publicar esta copia del sitio.
+El ID está configurado, el script implementado y WEBHOOK_URL conectado. Se comprobó que el servicio responde HTTP 200 y devuelve un error JSON al recibir datos inválidos, sin agregar filas. Falta verificar un registro real desde el formulario. El banner definitivo está pendiente.
 
 URL de aplicación web: https://script.google.com/macros/s/AKfycbxk1jFqD95ziNBz9ifGkBbQ5RpzUoDfflmmqvP0G2wXAMhaj0xOcVfzW0BXDsZkJkNlLw/exec
+
 
 
