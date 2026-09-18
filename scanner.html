@@ -44,7 +44,7 @@ async function onScan(decodedText) {
   scanState.textContent = 'Validando...';
   showResult('pending', 'Validando...', '', 'Espera la confirmación del servicio.', id);
   // El bloqueo lógico evita solicitudes duplicadas aunque pause falle.
-  try { scanner.pause(true); paused = true; } catch (_) { paused = false; }
+  try { scanner.pause(false); paused = true; } catch (_) { paused = false; }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20000);
   try {
@@ -75,6 +75,8 @@ async function onScan(decodedText) {
     scanState.textContent = 'Retira el QR. Siguiente lectura en 3 segundos...';
     resumeTimer = setTimeout(() => {
       try {
+        document.getElementById('result').hidden = true;
+        busy = false;
         if (paused && running) scanner.resume();
         scanState.textContent = running ? 'Listo para escanear el siguiente QR.' : 'Cámara apagada.';
       } catch (_) {
