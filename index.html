@@ -322,7 +322,7 @@
 
           <h2 class="text-2xl font-extrabold text-white tracking-tight">¡Registro Confirmado!</h2>
           <p class="text-sm text-slate-300 mt-1 max-w-xs mx-auto">
-            Tu asistencia ha sido validada exitosamente en el sistema.
+            Tu registro se guardó correctamente. Presenta tu QR al ingresar.
           </p>
 
           <!-- Tarjeta Resumen de Confirmación -->
@@ -363,6 +363,14 @@
             </div>
           </div>
 
+          <section class="mt-6 text-center" aria-labelledby="ticket-title">
+            <h3 id="ticket-title" class="text-lg font-bold text-white">Tu código de acceso</h3>
+            <p id="ticket-folio" class="mt-2 text-xl font-bold tracking-wider text-teal-300"></p>
+            <div id="ticket-qr" role="img" aria-label="Código QR de tu folio" class="hidden mx-auto mt-4" style="width:248px; max-width:100%; padding:24px; background:white; border-radius:12px;"></div>
+            <p id="ticket-notice" class="mt-3 text-sm text-slate-300" role="status"></p>
+            <a id="ticket-download" class="hidden mt-4 w-full bg-teal-600 hover:bg-teal-500 text-white font-semibold py-3 px-4 rounded-xl" download>Descargar QR</a>
+          </section>
+
           <!-- Botón Secundario de Reinicio -->
           <button type="button" id="reset-btn"
             class="mt-6 w-full bg-slate-800 hover:bg-slate-700 active:scale-[0.98] text-slate-200 font-semibold py-3.5 px-5 rounded-xl border border-slate-700 transition-all duration-200 flex items-center justify-center space-x-2 text-sm shadow-md cursor-pointer">
@@ -381,11 +389,12 @@
 
   </main>
 
+  <script src="vendor/qrcode.min.js"></script>
   <!-- ================= LÓGICA JAVASCRIPT VANILLA ================= -->
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       // URL /exec de la nueva implementación de Apps Script.
-      const WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbxk1jFqD95ziNBz9ifGkBbQ5RpzUoDfflmmqvP0G2wXAMhaj0xOcVfzW0BXDsZkJkNlLw/exec';
+      const WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbwemxHH67mb3mccHM5ZG9yZ5H_UKpM5-CwiHppX_ygtxUlGVyhIN0YDebjZMTsR4bZ3vA/exec';
       const form = document.getElementById('attendance-form');
       const formContainer = document.getElementById('form-container');
       const successContainer = document.getElementById('success-container');
@@ -397,6 +406,58 @@
       sendError.className = 'hidden mt-4 text-sm text-red-300';
       sendError.setAttribute('role', 'alert');
       form.appendChild(sendError);
+
+      const ticketFolio = document.getElementById('ticket-folio');
+      const ticketQR = document.getElementById('ticket-qr');
+      const ticketNotice = document.getElementById('ticket-notice');
+      const ticketDownload = document.getElementById('ticket-download');
+
+      function clearTicket() {
+        ticketFolio.textContent = '';
+        ticketQR.replaceChildren();
+        ticketQR.classList.add('hidden');
+        ticketNotice.textContent = '';
+        ticketDownload.classList.add('hidden');
+        ticketDownload.removeAttribute('href');
+        ticketDownload.removeAttribute('download');
+      }
+
+      function showTicket(folio) {
+        clearTicket();
+        // El folio siempre viene del servidor; nunca se calcula en el navegador.
+        if (typeof folio !== 'string' || !/^BMV-\d+$/.test(folio.trim())) {
+          ticketNotice.textContent = 'Tu registro se guardó, pero no recibimos un folio válido. Consulta al personal; no vuelvas a registrarte.';
+          return;
+        }
+        folio = folio.trim();
+        ticketFolio.textContent = folio;
+        try {
+          new QRCode(ticketQR, { text: folio, width: 200, height: 200,
+            colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
+          ticketQR.classList.remove('hidden');
+          const source = ticketQR.querySelector('canvas');
+          if (!source) throw new Error('No se pudo generar la imagen del QR');
+          // Añadir margen blanco también a la imagen descargada.
+          const downloadCanvas = document.createElement('canvas');
+          downloadCanvas.width = 496;
+          downloadCanvas.height = 560;
+          const ctx = downloadCanvas.getContext('2d');
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, 496, 560);
+          ctx.imageSmoothingEnabled = false;
+          ctx.drawImage(source, 48, 48, 400, 400);
+          ctx.fillStyle = '#000000';
+          ctx.font = 'bold 28px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(folio, 248, 514);
+          ticketDownload.href = downloadCanvas.toDataURL('image/png');
+          ticketDownload.download = folio + '.png';
+          ticketDownload.classList.remove('hidden');
+          ticketNotice.textContent = 'Guarda este QR y preséntalo al ingresar. Es de uso único.';
+        } catch (error) {
+          ticketNotice.textContent = 'Tu registro se guardó. Conserva el folio que aparece arriba y preséntalo al personal si no puedes guardar el QR.';
+        }
+      }
 
       // Campos de Entrada
       const fullnameInput = document.getElementById('fullname');
@@ -515,6 +576,7 @@
           fechaNacimiento: formData.birthyear
         };
 
+        let registrationResult;
         // Confirmar el guardado antes de mostrar éxito.
         try {
           const response = await fetch(WEBHOOK_URL, {
@@ -526,6 +588,7 @@
           });
           if (!response.ok) throw new Error('HTTP ' + response.status);
           const result = await response.json();
+          registrationResult = result;
           if (result.status !== 'success') {
             throw new Error(result.message || 'No se confirmó el guardado');
           }
@@ -538,6 +601,8 @@
           btnSpinner.classList.add('hidden');
           return;
         }
+
+        showTicket(registrationResult.folio);
 
         // Mostrar la confirmación recibida del servidor.
         setTimeout(() => {
@@ -581,6 +646,7 @@
         setTimeout(() => {
           // Limpiar formulario y errores
           form.reset();
+          clearTicket();
           [fullnameError, emailError, genderError, birthyearError].forEach(el => el.classList.add('hidden'));
 
           successContainer.classList.add('hidden');
