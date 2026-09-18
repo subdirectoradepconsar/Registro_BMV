@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Control de acceso · BMV</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;background:#020617;color:#f1f5f9;font-family:system-ui,sans-serif;padding:24px 16px;min-height:100vh}main{max-width:420px;margin:auto}header{margin-bottom:24px}.eyebrow{color:#5eead4;font-size:.75rem;font-weight:700;letter-spacing:.16em}h1{font-size:1.8rem;margin:8px 0}p{line-height:1.5;color:#cbd5e1}.camera{width:100%;max-width:420px;min-height:240px;background:#0f172a;border:1px solid #334155;border-radius:18px;overflow:hidden}#reader video{max-width:100%;border-radius:16px}button{width:100%;padding:15px;border:0;border-radius:12px;font:inherit;font-weight:700;background:#0f766e;color:white;cursor:pointer;margin-top:12px}button:disabled{opacity:.6;cursor:wait}button:focus-visible{outline:3px solid #99f6e4;outline-offset:3px}#stop{background:#334155}#scan-state{font-size:.9rem;min-height:1.5em}.card{padding:22px;border-radius:16px;margin-top:20px;overflow-wrap:anywhere;border:2px solid transparent}.card h2{font-size:1.35rem;margin:0 0 12px}.card p{color:inherit;margin:8px 0}.card.success{background:#14532d;border-color:#4ade80;color:#f0fdf4}.card.repeat,.card.error{background:#7f1d1d;border-color:#f87171;color:#fff1f2}.card.denied{background:#713f12;border-color:#facc15;color:#fefce8}.card.pending{background:#1e293b;border-color:#94a3b8}#result-name{font-size:1.2rem;font-weight:700}#result-id{font-family:monospace;font-size:.9rem}footer{font-size:.8rem;color:#94a3b8;margin-top:24px}[hidden]{display:none!important}
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js" defer></script>
+</head>
+<body>
+<main>
+  <header><span class="eyebrow">BMV · PERSONAL DE ACCESO</span><h1>Validar entrada</h1><p>Enfoca el QR del asistente y espera el resultado antes de permitir el ingreso.</p></header>
+  <div id="reader" class="camera" aria-label="Cámara para leer códigos QR"></div>
+  <button id="start" type="button">Activar cámara</button>
+  <button id="stop" type="button" hidden>Apagar cámara</button>
+  <p id="scan-state" role="status" aria-live="polite">Activa la cámara y permite su uso en el navegador.</p>
+  <section id="result" class="card" role="status" aria-live="assertive" aria-atomic="true" hidden>
+    <h2 id="result-title"></h2><p id="result-name"></p><p id="result-message"></p><p id="result-id"></p>
+  </section>
+  <footer>Retira el QR después de validarlo. La lectura se reanuda 3 segundos después del resultado.</footer>
+</main>
+<script>
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwemxHH67mb3mccHM5ZG9yZ5H_UKpM5-CwiHppX_ygtxUlGVyhIN0YDebjZMTsR4bZ3vA/exec';
+const startButton = document.getElementById('start');
+const stopButton = document.getElementById('stop');
+const scanState = document.getElementById('scan-state');
+let scanner, running = false, busy = false, paused = false, resumeTimer;
+function showResult(kind, title, name, message, id = '') {
+  const card = document.getElementById('result');
+  card.className = 'card ' + kind;
+  card.hidden = false;
+  document.getElementById('result-title').textContent = title;
+  document.getElementById('result-name').textContent = typeof name === 'string' ? name : '';
+  document.getElementById('result-message').textContent = typeof message === 'string' ? message : '';
+  document.getElementById('result-id').textContent = id ? 'Folio: ' + id : '';
+}
+async function onScan(decodedText) {
+  if (busy || !running) return;
+  busy = true;
+  stopButton.disabled = true;
+  const id = decodedText.trim();
+  scanState.textContent = 'Validando...';
+  showResult('pending', 'Validando...', '', 'Espera la confirmación del servicio.', id);
+  // El bloqueo lógico evita solicitudes duplicadas aunque pause falle.
+  try { scanner.pause(true); paused = true; } catch (_) { paused = false; }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+  try {
+    if (!id) throw new Error('empty');
+    const response = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ accion: 'validar', id: decodedText.trim() }),
+      signal: controller.signal
+    });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    const result = await response.json();
+    if (!result || typeof result !== 'object') throw new Error('Invalid response');
+    if (result.status === 'EXITO') {
+      showResult('success', 'ACCESO CONCEDIDO', result.nombre, result.message || 'Bienvenido/a', id);
+    } else if (result.status === 'REPETIDO') {
+      showResult('repeat', 'CÓDIGO YA UTILIZADO', result.nombre, result.message || 'Este código ya fue utilizado.', id);
+    } else if (result.status === 'DENEGADO') {
+      showResult('denied', 'ACCESO DENEGADO', '', result.message || 'El código no existe en la lista de registros.', id);
+    } else {
+      showResult('error', 'NO SE PUDO VALIDAR', '', result.message || 'El servicio devolvió una respuesta no reconocida.', id);
+    }
+  } catch (_) {
+    // Una desconexión no permite saber si Google ya guardó el ingreso.
+    showResult('error', 'VALIDACIÓN SIN CONFIRMAR', '', 'No se pudo confirmar el ingreso. Revisa la conexión y consulta la hoja antes de volver a validar este folio.', id);
+  } finally {
+    clearTimeout(timeout);
+    scanState.textContent = 'Retira el QR. Siguiente lectura en 3 segundos...';
+    resumeTimer = setTimeout(() => {
+      try {
+        if (paused && running) scanner.resume();
+        scanState.textContent = running ? 'Listo para escanear el siguiente QR.' : 'Cámara apagada.';
+      } catch (_) {
+        scanState.textContent = 'No se pudo reanudar la lectura. Apaga y vuelve a activar la cámara.';
+      }
+      paused = false;
+      busy = false;
+      stopButton.disabled = false;
+    }, 3000);
+  }
+}
+startButton.addEventListener('click', async () => {
+  if (running) return;
+  startButton.disabled = true;
+  scanState.textContent = 'Iniciando cámara...';
+  document.getElementById('result').hidden = true;
+  try {
+    if (!window.isSecureContext) throw new Error('secure');
+    if (typeof Html5Qrcode === 'undefined') throw new Error('library');
+    scanner = scanner || new Html5Qrcode('reader', { formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE] });
+    await scanner.start({ facingMode: 'environment' }, {
+      fps: 10,
+      qrbox: (width, height) => { const size = Math.floor(Math.min(width, height) * .7); return { width: size, height: size }; }
+    }, onScan, () => {});
+    running = true;
+    startButton.hidden = true;
+    stopButton.hidden = false;
+    scanState.textContent = 'Listo. Enfoca el QR del asistente.';
+  } catch (error) {
+    const reason = error && error.message;
+    scanState.textContent = reason === 'library' ? 'No se pudo cargar el lector. Revisa tu conexión y recarga la página.' : reason === 'secure' ? 'Abre esta página con HTTPS para usar la cámara.' : 'No se pudo abrir la cámara. Permite el acceso y comprueba que no la use otra aplicación; después inténtalo de nuevo.';
+  } finally { startButton.disabled = false; }
+});
+stopButton.addEventListener('click', async () => {
+  if (!running || busy) return;
+  stopButton.disabled = true;
+  try {
+    await scanner.stop();
+    clearTimeout(resumeTimer);
+    running = false;
+    paused = false;
+    startButton.hidden = false;
+    stopButton.hidden = true;
+    scanState.textContent = 'Cámara apagada.';
+  } catch (_) { scanState.textContent = 'No se pudo apagar la cámara. Cierra esta pestaña para detenerla.'; }
+  finally { stopButton.disabled = false; }
+});
+</script>
+</body>
+</html>
